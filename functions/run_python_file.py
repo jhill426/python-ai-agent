@@ -1,58 +1,36 @@
-from pathlib import Path
+import os
 import subprocess
-import sys
-from typing import List
 
 
-def run_python_file(working_directory: str, file_path: str, args: List[str] = []):
-    """
-    Execute a Python file within a permitted working directory.
-    """
+def run_python_file(working_directory, file_path, args=None):
     try:
-        workdir = Path(working_directory).resolve()
-        target = (
-            (workdir / file_path).resolve()
-            if not Path(file_path).is_absolute()
-            else Path(file_path).resolve()
-        )
-
-        try:
-            target.relative_to(workdir)
-        except ValueError:
+        abs_working_dir = os.path.abspath(working_directory)
+        abs_file_path = os.path.normpath(os.path.join(abs_working_dir, file_path))
+        if os.path.commonpath([abs_working_dir, abs_file_path]) != abs_working_dir:
             return f'Error: Cannot execute "{file_path}" as it is outside the permitted working directory'
-
-        if not target.exists() or not target.is_file():
-            return f'Error: File "{file_path}" not found.'
-        if target.suffix != ".py":
-            return f'Error: "{file_path}" is not a Python file.'
-
-        cmd = [sys.executable, str(target), *[str(a) for a in (args or [])]]
-
-        completed = subprocess.run(
-            cmd, cwd=str(workdir), capture_output=True, text=True, timeout=30
+        if not os.path.isfile(abs_file_path):
+            return f'Error: "{file_path}" does not exist or is not a regular file'
+        if not abs_file_path.endswith(".py"):
+            return f'Error: "{file_path}" is not a Python file'
+        command = ["python", abs_file_path]
+        if args:
+            command.extend(args)
+        result = subprocess.run(
+            command,
+            cwd=abs_working_dir,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
-
-        stdout = completed.stdout or ""
-        stderr = completed.stderr or ""
-
-        if not stdout and not stderr:
-            return "No output produced."
-
-        parts = []
-        parts.append(
-            "STDOUT:"
-            + ("" if stdout.startswith("\n") or not stdout else "\n")
-            + stdout.rstrip("\n")
-        )
-        parts.append(
-            "STDERR:"
-            + ("" if stderr.startswith("\n") or not stderr else "\n")
-            + stderr.rstrip("\n")
-        )
-        if completed.returncode != 0:
-            parts.append(f"Process exited with code {completed.returncode}")
-
-        return "\n".join(parts)
-
+        output = []
+        if result.returncode != 0:
+            output.append(f"Process exited with code {result.returncode}")
+        if not result.stdout and not result.stderr:
+            output.append("No output produced")
+        if result.stdout:
+            output.append(f"STDOUT:\n{result.stdout}")
+        if result.stderr:
+            output.append(f"STDERR:\n{result.stderr}")
+        return "\n".join(output)
     except Exception as e:
         return f"Error: executing Python file: {e}"

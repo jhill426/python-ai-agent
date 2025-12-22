@@ -1,5 +1,3 @@
-# render.py
-
 import json
 
 

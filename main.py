@@ -1,55 +1,47 @@
+import argparse
 import os
-import sys
+
+from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from dotenv import load_dotenv
+
+from prompts import system_prompt
 
 
 def main():
-    load_dotenv()
+    parser = argparse.ArgumentParser(description="AI Code Assistant")
+    parser.add_argument("user_prompt", type=str, help="Prompt to send to Gemini")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+    args = parser.parse_args()
 
+    load_dotenv()
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        print("Missing GEMINI_API_KEY in environment.", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError("GEMINI_API_KEY environment variable not set")
 
-    if len(sys.argv) < 2 or sys.argv[1].startswith("--"):
-        print('Usage: uv run main.py "Your prompt here" [--verbose]', file=sys.stderr)
-        sys.exit(2)
-
-    user_prompt = sys.argv[1]
-    verbose = "--verbose" in sys.argv
-    model = "gemini-2.0-flash-001"
-    
     client = genai.Client(api_key=api_key)
+    messages = [types.Content(role="user", parts=[types.Part(text=args.user_prompt)])]
+    if args.verbose:
+        print(f"User prompt: {args.user_prompt}\n")
 
-    messages = [types.Content(role="user", parts=[types.Part(text=user_prompt)])]
+    generate_content(client, messages, args.verbose)
 
-    config = types.GenerateContentConfig(
-        max_output_tokens=512,
-        temperature=0.7,
+
+def generate_content(client, messages, verbose):
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=messages,
+        config=types.GenerateContentConfig(system_instruction=system_prompt),
     )
+    if not response.usage_metadata:
+        raise RuntimeError("Gemini API response appears to be malformed")
 
-    try:
-        response = client.models.generate_content(model=model, contents=messages, config=config)
-    except Exception as e:
-        status = getattr(e, "status_code", "unknown")
-        print(f"Request failed (status={status}): {e}", file=sys.stderr)
-        sys.exit(3)
+    if verbose:
+        print("Prompt tokens:", response.usage_metadata.prompt_token_count)
+        print("Response tokens:", response.usage_metadata.candidates_token_count)
+    print("Response:")
+    print(response.text)
 
-    if hasattr(response, "text") and response.text:
-        print(response.text)
-    else:
-        try:
-            print(response.candidates[0].content.parts[0].text)
-        except Exception:
-            print(response)
-
-    if verbose and hasattr(response, "usage_metadata"):
-        um = response.usage_metadata
-        print(f"User prompt: {user_prompt}")
-        print(f"Prompt tokens: {getattr(um, 'prompt_token_count', 'n/a')}", file=sys.stderr)
-        print(f"Response tokens: {getattr(um, 'candidates_token_count', 'n/a')}", file=sys.stderr)
 
 if __name__ == "__main__":
     main()
