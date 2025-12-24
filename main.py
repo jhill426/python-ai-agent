@@ -1,6 +1,7 @@
 import argparse
 import os
 
+from call_function import available_functions
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -31,7 +32,9 @@ def generate_content(client, messages, verbose):
     response = client.models.generate_content(
         model="gemini-2.5-flash",
         contents=messages,
-        config=types.GenerateContentConfig(system_instruction=system_prompt),
+        config=types.GenerateContentConfig(
+            tools=[available_functions], system_instruction=system_prompt
+        ),
     )
     if not response.usage_metadata:
         raise RuntimeError("Gemini API response appears to be malformed")
